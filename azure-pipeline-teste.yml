@@ -1,0 +1,67 @@
+pool:
+  vmImage: 'windows-2019'
+
+trigger:
+- test
+
+variables:
+  solution: '**/*.sln'
+  buildPlatform: 'Any CPU'
+  buildConfiguration: 'Release'
+
+steps:
+- task: NuGetToolInstaller@0
+  displayName: 'Use NuGet 4.4.1'
+  inputs:
+    versionSpec: 4.4.1
+
+- task: NuGetCommand@2
+  displayName: 'NuGet restore'
+  inputs:
+    restoreSolution: '$(solution)'
+
+
+- task: VSBuild@1
+  displayName: 'Build solution **\*.sln'
+  inputs:
+    solution: '$(solution)'
+    msbuildArgs: '/p:DeployOnBuild=true /p:DeployDefaultTarget=WebPublish /p:WebPublishMethod=FileSystem /p:publishUrl="$(Agent.TempDirectory)\WebAppContent\\"'
+    platform: '$(BuildPlatform)'
+    configuration: '$(BuildConfiguration)'
+
+- task: DotNetCoreCLI@2
+  displayName: Tests.NUnit
+  inputs: 
+    command: 'test'
+    projects: '**/Tests.NUnit/*[Tt]*.csproj'
+    arguments: '--configuration $(BuildConfiguration) --collect "Code coverage"'
+    testRunTitle: 'Testes'
+
+- task: ArchiveFiles@2
+  displayName: 'Archive Files'
+  inputs:
+    rootFolderOrFile: '$(Agent.TempDirectory)\WebAppContent'
+    includeRootFolder: false
+    replaceExistingArchive: true
+
+- task: AzureRmWebAppDeployment@4
+  displayName: 'Azure Web App Deploy: nibochallengeteste'
+  inputs:
+    ConnectionType: 'AzureRM'
+    azureSubscription: 'Avaliação Gratuita (8b104923-90a7-4501-9c10-be74d194af9c)'
+    appType: 'webApp'
+    WebAppName: 'nibochallengeteste'
+    package: '$(build.artifactstagingdirectory)/**/*.zip'
+
+- task: PublishSymbols@2
+  inputs:
+    SearchPattern: '**\bin\**\*.pdb'
+    PublishSymbols: false
+  continueOnError: true
+
+- task: PublishBuildArtifacts@1
+  displayName: 'Publish Artifact: WeatherForecast'
+  inputs:
+    PathtoPublish: '$(Build.ArtifactStagingDirectory)'
+    ArtifactName: 'WeatherForecast'
+  condition: succeededOrFailed()
